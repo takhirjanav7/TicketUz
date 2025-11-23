@@ -1,0 +1,104 @@
+services:
+
+  # ------------------ SQL Server ------------------
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      SA_PASSWORD: "YourStrong!Passw0rd"
+      ACCEPT_EULA: "Y"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sql_data:/var/opt/mssql
+
+  # ------------------ RabbitMQ ------------------
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: "guest"
+      RABBITMQ_DEFAULT_PASS: "guest"
+
+  # ------------------ AuthSystem ------------------
+  authsystem:
+    build:
+      context: ./AuthSystem/src/AuthSystem.Api
+      dockerfile: Dockerfile
+    depends_on:
+      - sqlserver
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"
+      ConnectionStrings__DefaultConnection: "Server=sqlserver;Database=AuthDb;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True;"
+    ports:
+      - "5001:80"
+
+  # ------------------ MovieSystem ------------------
+  moviesystem:
+    build:
+      context: ./MovieSystem/src/MovieSystem.Api
+      dockerfile: Dockerfile
+    depends_on:
+      - sqlserver
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"
+      ConnectionStrings__DefaultConnection: "Server=sqlserver;Database=MovieDb;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True;"
+    ports:
+      - "5002:80"
+      
+  # ------------------ BookingSystem ------------------
+  bookingsystem:
+    build:
+      context: ./BookingSystem/src/BookingSystem.Api
+      dockerfile: Dockerfile
+    depends_on:
+      - sqlserver
+      - authsystem
+      - paymentsystem
+      - moviesystem
+      - rabbitmq
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"
+      Services__AuthSystem: "http://authsystem:80/"
+      Services__MovieSystem: "http://moviesystem:80/"
+      Services__PaymentSystem: "http://paymentsystem:80/"
+      ConnectionStrings__DefaultConnection: "Server=sqlserver;Database=BookingDb;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True;"
+      RabbitMQ__Host: "rabbitmq"
+    ports:
+      - "5003:80"
+
+  # ------------------ PaymentSystem ------------------
+  paymentsystem:
+    build:
+      context: ./PaymentSystem/src/PaymentSystem.Api
+      dockerfile: Dockerfile
+    depends_on:
+      - sqlserver
+      - rabbitmq
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"
+      ConnectionStrings__DefaultConnection: "Server=sqlserver;Database=PaymentDb;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True;"
+      RabbitMQ__Host: "rabbitmq"
+    ports:
+      - "5004:80"
+
+  # ------------------ ApiGateway ------------------
+  apigateway:
+    build:
+      context: ./ApiGateway/src/APIGateway.Api
+      dockerfile: Dockerfile
+    depends_on:
+      - authsystem
+      - moviesystem
+      - bookingsystem
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"
+      Services__AuthSystem: "http://authsystem:80/"
+      Services__MovieSystem: "http://moviesystem:80/"
+      Services__BookingSystem: "http://bookingsystem:80/"
+    ports:
+      - "7000:80"
+
+volumes:
+  sql_data:
