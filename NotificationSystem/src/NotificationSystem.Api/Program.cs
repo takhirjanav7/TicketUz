@@ -1,36 +1,25 @@
+﻿using NotificationSystem.Api.Extensions;
 
-namespace NotificationSystem.Api
+namespace NotificationService // ← bu namespace boʻlsin
 {
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
-            var builder = WebApplication.CreateBuilder(args);
+            var builder = Host.CreateApplicationBuilder(args);
 
-            // Add services to the container.
+            // appsettings.json ni oʻqiydi
+            builder.Configuration
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
 
-            builder.Services.AddControllers();
-            // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-            builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
+            // Bizning barcha servislarimizni roʻyxatga oladi
+            builder.Services.AddNotificationServices(builder.Configuration);
 
-            var app = builder.Build();
+            var host = builder.Build();
 
-            // Configure the HTTP request pipeline.
-            if (app.Environment.IsDevelopment())
-            {
-                app.UseSwagger();
-                app.UseSwaggerUI();
-            }
+            Console.WriteLine("NotificationService ishga tushdi... Xabarlar kutilmoqda!");
 
-            app.UseHttpsRedirection();
-
-            app.UseAuthorization();
-
-
-            app.MapControllers();
-
-            app.Run();
+            await host.RunAsync(); // abadiy ishlaydi
         }
     }
 }

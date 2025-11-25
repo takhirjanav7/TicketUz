@@ -14,6 +14,9 @@ public static class DatabaseConfigurations
         builder.Services.AddDbContext<AppDbContext>(options =>
           options.UseSqlServer(connectionString));
 
+        builder.Services.Configure<RabbitMqConfiguration>(
+            builder.Configuration.GetSection("RabbitMq"));
+
         builder.Services.AddSingleton(jwtSettings);
     }
 }

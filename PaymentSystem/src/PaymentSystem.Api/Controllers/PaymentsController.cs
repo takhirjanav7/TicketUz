@@ -17,7 +17,10 @@ public class PaymentsController : ControllerBase
     public async Task<ActionResult<PaymentResultDto>> Create(PaymentCreateDto dto)
     {
         var result = await _paymentService.ProcessPaymentAsync(dto);
-        return Ok(result);
+        return CreatedAtAction(
+            nameof(Get),
+            new { id = result.PaymentId },
+            result);    
     }
 
     [HttpGet("{id}")]

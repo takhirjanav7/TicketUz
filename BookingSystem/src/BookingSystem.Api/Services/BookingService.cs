@@ -13,30 +13,24 @@ public class BookingService : IBookingService
     private readonly IAuthApiService _authApiService;
     private readonly IMovieApiService _movieApiService;
     private readonly IPaymentApiService _paymentApiService;
+    private readonly INotificationPublisher _notifier;
 
-    public BookingService(AppDbContext appDbContext, IAuthApiService authApiService, IMovieApiService movieApiService, IPaymentApiService paymentApiService)
+    public BookingService(AppDbContext appDbContext, IAuthApiService authApiService, IMovieApiService movieApiService, IPaymentApiService paymentApiService, INotificationPublisher notifier)
     {
         _appDbContext = appDbContext;
         _authApiService = authApiService;
         _movieApiService = movieApiService;
         _paymentApiService = paymentApiService;
+        _notifier = notifier;
     }
 
     public async Task<long> AddAsync(BookingCreateDto bookingCreateDto)
     {
-
         var userExists = await _authApiService.ValidateUser(bookingCreateDto.UserId);
         var validShowtime = await _movieApiService.ValidateShowtime(bookingCreateDto.ShowtimeId, bookingCreateDto.SeatId, bookingCreateDto.TotalPrice);
 
-        if (!userExists)
-        {
-            throw new ArgumentException($"User with id {bookingCreateDto.UserId} does not exist.");
-        }
-
-        if (!validShowtime)
-        {
-            throw new ArgumentException($"Showtime with id {bookingCreateDto.ShowtimeId} and seat id {bookingCreateDto.SeatId} is not valid.");
-        }
+        if (!userExists) throw new ArgumentException($"User with id {bookingCreateDto.UserId} does not exist.");
+        if (!validShowtime) throw new ArgumentException("Invalid showtime or seat.");
 
         var booking = new Booking
         {
@@ -51,7 +45,6 @@ public class BookingService : IBookingService
         await _appDbContext.Bookings.AddAsync(booking);
         await _appDbContext.SaveChangesAsync();
 
-
         var paymentResult = await _paymentApiService.ProcessPaymentAsync(new PaymentCreateDto
         {
             BookingId = booking.BookingId,
@@ -59,23 +52,53 @@ public class BookingService : IBookingService
             Amount = booking.TotalPrice
         });
 
-
         if (paymentResult.Status == PaymentStatus.Failed)
         {
             booking.Status = BookingStatus.Cancelled;
-            //await _seatRepository.ReleaseSeatAsync(booking.SeatId, booking.ShowtimeId);
             await _appDbContext.SaveChangesAsync();
-
             throw new Exception("Payment failed.");
         }
 
-        // 6. Payment success → CONFIRM booking
         booking.Status = BookingStatus.Confirmed;
         await _appDbContext.SaveChangesAsync();
 
-        // 7. Publish event to RabbitMQ
-        //await _eventPublisher.PublishBookingConfirmed(booking);
+        try
+        {
+            var user = await _authApiService.GetUserByIdAsync(bookingCreateDto.UserId);
+            var userEmail = user?.Email ?? "unknown@example.com";
+            var userName = user?.FirstName ?? userEmail.Split('@')[0];
 
+
+            var showtime = await _movieApiService.GetShowtimeAsync(bookingCreateDto.ShowtimeId);
+            if (showtime == null)
+            {
+                showtime = new ShowtimeInfoDto("Noma'lum film", "Noma'lum kino", DateTime.Today, "00:00");
+            }
+
+
+            var row = (booking.SeatId / 10) + 1;
+            var seat = (booking.SeatId % 10) + 1;
+            var seatDisplay = $"{row}-qator, {seat}-oʻrin";
+
+
+            await _notifier.PublishAsync("booking.created", new
+            {
+                email = userEmail,
+                name = userName,
+                movie = showtime.MovieTitle,
+                cinema = showtime.CinemaName,
+                hall = showtime.HallName,
+                date = showtime.ShowDate.ToString("dd MMMM yyyy", new System.Globalization.CultureInfo("uz-Latn-UZ")),
+                time = showtime.ShowTime,
+                seat = seatDisplay,
+                amount = booking.TotalPrice,
+                bookingId = booking.BookingId
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[NOTIFICATION XATO] Booking {booking.BookingId}: {ex.Message}");
+        }
 
         return booking.BookingId;
     }

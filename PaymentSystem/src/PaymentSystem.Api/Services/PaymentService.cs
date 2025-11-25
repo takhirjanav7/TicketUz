@@ -9,10 +9,14 @@ public class PaymentService : IPaymentService
 {
     private readonly AppDbContext _context;
     private readonly Random _random = new();
+    private readonly INotificationPublisher _notifier;
+    private readonly IAuthApiService _authApiService;
 
-    public PaymentService(AppDbContext context)
+    public PaymentService(AppDbContext context, INotificationPublisher notifier, IAuthApiService authApiService)
     {
         _context = context;
+        _notifier = notifier;
+        _authApiService = authApiService;
     }
 
     public async Task<PaymentResultDto> ProcessPaymentAsync(PaymentCreateDto dto)
@@ -30,6 +34,30 @@ public class PaymentService : IPaymentService
 
         await _context.Payments.AddAsync(payment);
         await _context.SaveChangesAsync();
+
+        if (isSuccess)
+        {
+            try
+            {
+                var user = await _authApiService.GetUserByIdAsync(dto.UserId);
+                var userEmail = user?.Email ?? "no-email@example.com";
+                var userName = user?.FirstName ?? userEmail.Split('@')[0];
+
+                await _notifier.PublishAsync("payment.success", new
+                {
+                    email = userEmail,
+                    name = userName,
+                    amount = dto.Amount,
+                    transactionId = $"TRX-{payment.PaymentId:D8}",
+                    bookingId = dto.BookingId,
+                    date = DateTime.UtcNow.AddHours(5).ToString("dd.MM.yyyy HH:mm", new System.Globalization.CultureInfo("uz-Latn-UZ"))
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[NOTIFICATION XATOLIK] Payment {payment.PaymentId}: {ex.Message}");
+            }
+        }
 
         return new PaymentResultDto
         {

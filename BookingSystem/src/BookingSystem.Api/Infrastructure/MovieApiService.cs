@@ -1,4 +1,6 @@
 ﻿
+using BookingSystem.Api.Dtos;
+
 namespace BookingSystem.Api.Infrastructure;
 
 public class MovieApiService : IMovieApiService
@@ -7,7 +9,20 @@ public class MovieApiService : IMovieApiService
 
     public MovieApiService(IHttpClientFactory factory)
     {
-        _client = factory.CreateClient("MovieSystem"); 
+        _client = factory.CreateClient("MovieSystem");
+    }
+
+    public async Task<ShowtimeInfoDto?> GetShowtimeAsync(long showtimeId)
+    {
+        try
+        {
+            var response = await _client.GetFromJsonAsync<ShowtimeInfoDto>($"api/showtimes/{showtimeId}");
+            return response;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public async Task<bool> ValidateShowtime(long showtimeId, long seatId, decimal TotalPrice)

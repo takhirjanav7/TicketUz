@@ -6,4 +6,6 @@ public class BookingCreateDto
     public long ShowtimeId { get; set; }
     public long SeatId { get; set; }
     public decimal TotalPrice { get; set; }
+
+    public string UserName { get; set; } = null!;
 }
